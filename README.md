@@ -86,6 +86,7 @@ python best_packs.py
 Guilds of Ravnica (GRN): 7 rare/mythic card(s) missing
    - Arclight Phoenix (x3)
    - Steam Vents (x4)
+
 Outlaws of Thunder Junction (OTJ): 4 rare/mythic card(s) missing
    - Spirebluff Canal (x4)
 ...
