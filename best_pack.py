@@ -75,22 +75,22 @@ def get_card_data(card_name):
     return r.json()
 
 
-def get_arena_printings(card_data, arena_sets):
+def get_arena_printings(card_data, arena_sets, allowed_rarities):
     printings_url = card_data["prints_search_uri"]
     r = requests.get(printings_url)
     if r.status_code != 200:
-        return [], card_data["rarity"]
+        return []
 
     printings = r.json()["data"]
     arena_printings = [
-        p["set"] for p in printings
-        if p["set"] in arena_sets
+        (p["set"], p["rarity"]) for p in printings
+        if p["set"] in arena_sets and p["rarity"] in allowed_rarities
     ]
-    return arena_printings, card_data["rarity"]
+    return arena_printings
 
 
 # === 4. Main logic: find best sets ===
-def best_sets_to_open(deck_df, owned_dict):
+def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
     arena_sets = get_arena_sets()
     set_counter = defaultdict(int)
     cards_by_set = defaultdict(lambda: defaultdict(int))  # dict[set_code][card_name] = qty_missing
@@ -109,16 +109,13 @@ def best_sets_to_open(deck_df, owned_dict):
         if not card_data:
             continue
 
-        if card_data["rarity"] not in ["rare", "mythic"]:
-            continue
+        arena_printings = get_arena_printings(card_data, arena_sets, allowed_rarities)
 
-        printings, rarity = get_arena_printings(card_data, arena_sets)
+        if not arena_printings:
+            continue  # no matching arena printings, skip
 
-        if not printings:
-            continue  # no arena printings, skip
-
-        # Assign the missing quantity to only one set (the first one)
-        chosen_set = printings[0]
+        # Assign the missing quantity to the first matching set printing
+        chosen_set = arena_printings[0][0]
         set_counter[chosen_set] += qty_missing
         cards_by_set[chosen_set][name] += qty_missing
 
@@ -129,12 +126,16 @@ def best_sets_to_open(deck_df, owned_dict):
 
 
 # === 5. Run and output result ===
-results, arena_sets, cards_by_set = best_sets_to_open(deck_df, owned_dict)
+# Here you define which rarities you want to consider
+allowed_rarities = ["rare", "mythic"]  # ex: include mythics and rares
+# allowed_rarities = ["rare"]  # ex: only rares
+# allowed_rarities = ["mythic"]  # ex: only mythics
+
+results, arena_sets, cards_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
 
 print("\n📦 Recommended Arena sets to open packs from:")
 print("=============================================")
 for set_code, count in results:
-    print(f"{arena_sets[set_code]} ({set_code.upper()}): {count} rare/mythic card(s) missing")
-    # cards_by_set[set_code] is a dict: card_name -> qty_missing
+    print(f"{arena_sets[set_code]} ({set_code.upper()}): {count} card(s) missing (rarities: {allowed_rarities})")
     for card_name, qty_missing in sorted(cards_by_set[set_code].items()):
         print(f"   - {card_name} (x{qty_missing})")
