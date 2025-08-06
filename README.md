@@ -51,7 +51,7 @@ pip install pandas requests openpyxl
 
 ## Excel File Format
 
-Create `mtg_decklist.xlsx` with these two sheets:
+Create `mtg_decklist.xlsx` with these two sheets on the same folder as the script (we have an example excel file on this repository):
 
 ### Decklist
 
