@@ -46,3 +46,51 @@ Install packages with:
 
 ```bash
 pip install pandas requests openpyxl
+
+
+## Excel File Format
+
+Create `mtg_decklist.xlsx` with these two sheets:
+
+### Decklist
+
+| Name             | Qty |
+|------------------|-----|
+| Arclight Phoenix | 4   |
+| Steam Vents      | 4   |
+| ...              | ... |
+
+### Have
+
+| Name             | Qty |
+|------------------|-----|
+| Arclight Phoenix | 1   |
+| Steam Vents      | 0   |
+| ...              | ... |
+
+- **Name** columns: Exact card names as recognized by Scryfall.
+- **Qty** columns: Integer quantities.
+
+## Usage
+
+Run the script:
+
+```bash
+python best_packs.py
+
+## Example Output
+📦 Recommended Arena sets to open packs from:
+=============================================
+Guilds of Ravnica (GRN): 7 rare/mythic card(s) missing
+   - Arclight Phoenix (x3)
+   - Steam Vents (x4)
+Outlaws of Thunder Junction (OTJ): 4 rare/mythic card(s) missing
+   - Spirebluff Canal (x4)
+...
+
+## Notes
+
+- Only rare and mythic cards are considered for pack recommendations.
+- Missing card quantities are assigned to the first relevant printing set.
+- The manual list of Arena sets can be updated as new sets are released.
+
