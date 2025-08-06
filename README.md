@@ -78,6 +78,7 @@ Run the script:
 
 ```bash
 python best_packs.py
+```
 
 ## Example Output
 📦 Recommended Arena sets to open packs from:
