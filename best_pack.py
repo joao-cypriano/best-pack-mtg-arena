@@ -127,7 +127,9 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
 
 # === 5. Run and output result ===
 # Here you define which rarities you want to consider
-allowed_rarities = ["rare", "mythic"]  # ex: include mythics and rares
+allowed_rarities = ["rare", "mythic"]
+
+# Examples of how to change this
 # allowed_rarities = ["rare"]  # ex: only rares
 # allowed_rarities = ["mythic"]  # ex: only mythics
 
