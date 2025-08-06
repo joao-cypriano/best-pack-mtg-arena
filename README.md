@@ -46,6 +46,7 @@ Install packages with:
 
 ```bash
 pip install pandas requests openpyxl
+```
 
 
 ## Excel File Format
