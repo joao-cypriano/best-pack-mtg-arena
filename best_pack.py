@@ -5,9 +5,17 @@ import time
 
 # === 1. Load decklist and owned cards from Excel ===
 EXCEL_PATH = "mtg_decklist.xlsx"
+search_sideboard = True  # Toggle this to include or exclude the Sideboard
 
 deck_df = pd.read_excel(EXCEL_PATH, sheet_name="Decklist")
 owned_df = pd.read_excel(EXCEL_PATH, sheet_name="Have")
+
+if search_sideboard:
+    try:
+        sideboard_df = pd.read_excel(EXCEL_PATH, sheet_name="Sideboard")
+        deck_df = pd.concat([deck_df, sideboard_df], ignore_index=True)
+    except Exception as e:
+        print("⚠️  Sideboard tab not found or error reading it. Skipping sideboard.")
 
 deck_df["Name"] = deck_df["Name"].str.strip()
 owned_df["Name"] = owned_df["Name"].str.strip()
