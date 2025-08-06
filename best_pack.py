@@ -94,6 +94,7 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
     arena_sets = get_arena_sets()
     set_counter = defaultdict(int)
     cards_by_set = defaultdict(lambda: defaultdict(int))  # dict[set_code][card_name] = qty_missing
+    rarity_counter_by_set = defaultdict(lambda: defaultdict(int))  # dict[set_code][rarity] = count
 
     for _, row in deck_df.iterrows():
         name = row["Name"]
@@ -115,29 +116,30 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
             continue  # no matching arena printings, skip
 
         # Assign the missing quantity to the first matching set printing
-        chosen_set = arena_printings[0][0]
+        chosen_set, rarity = arena_printings[0]
         set_counter[chosen_set] += qty_missing
         cards_by_set[chosen_set][name] += qty_missing
+        rarity_counter_by_set[chosen_set][rarity] += qty_missing
 
         time.sleep(0.1)  # be kind to the API
 
     sorted_sets = sorted(set_counter.items(), key=lambda x: x[1], reverse=True)
-    return sorted_sets, arena_sets, cards_by_set
+    return sorted_sets, arena_sets, cards_by_set, rarity_counter_by_set
 
 
 # === 5. Run and output result ===
-# Here you define which rarities you want to consider
-allowed_rarities = ["rare", "mythic"]
+allowed_rarities = ["rare", "mythic"]  # You can modify this list as needed
 
-# Examples of how to change this
-# allowed_rarities = ["rare"]  # ex: only rares
-# allowed_rarities = ["mythic"]  # ex: only mythics
-
-results, arena_sets, cards_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
+results, arena_sets, cards_by_set, rarity_counter_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
 
 print("\n📦 Recommended Arena sets to open packs from:")
 print("=============================================")
 for set_code, count in results:
-    print(f"{arena_sets[set_code]} ({set_code.upper()}): {count} card(s) missing (rarities: {allowed_rarities})")
+    rarity_breakdown = ", ".join(
+        f"{rarity_counter_by_set[set_code][rarity]} {rarity}"
+        for rarity in allowed_rarities
+        if rarity_counter_by_set[set_code][rarity] > 0
+    )
+    print(f"{arena_sets[set_code]} ({set_code.upper()}): {count} card(s) missing (rarities: {rarity_breakdown})")
     for card_name, qty_missing in sorted(cards_by_set[set_code].items()):
         print(f"   - {card_name} (x{qty_missing})")
