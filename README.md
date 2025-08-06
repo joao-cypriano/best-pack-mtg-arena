@@ -20,7 +20,8 @@ Given a decklist and a list of cards you already own, the script:
 
 1. **Input data**:  
    You provide an Excel file `mtg_decklist.xlsx` with two sheets:  
-   - **Decklist**: Your desired deck with card names and quantities.  
+   - **Decklist**: Your desired deck with card names and quantities.
+   - **Sideboard**: Your sideboard list with card names and quantities.
    - **Have**: Cards you already own with names and quantities.
 
 2. **Scryfall API**:  
