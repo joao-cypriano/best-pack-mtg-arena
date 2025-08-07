@@ -363,6 +363,6 @@ for set_code, score in sorted_after:
         print(f"   - {card_name} ({card_rarity}) (x{qty_missing})")
 
 # Print detailed log of wildcard usage on simulation
-print("\n🎯 Wildcard crafting usage (only use them when you have enough to complete the deck, this step is just to aid in calculations):")
+print("\n🎯 Wildcard crafting usage (only use them when you have enough wildcards to complete the deck, this step is just to aid in calculations):")
 for log_line in usage_log:
     print(" -", log_line)
