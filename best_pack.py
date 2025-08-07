@@ -73,7 +73,21 @@ def get_arena_sets():
     }
 
 
-# === 3. Get card info and printings from Scryfall ===
+# === 3. Define Standard/Alchemy legal sets for Golden Pack bonus ===
+STANDARD_OR_ALCHEMY_LEGAL_SETS = {
+    "fdn", "dmu", "bro", "one", "mom", "mat", "woe", "lci", "mkm", "otj", "blb", "dsk", "dft", "tdm", "fin", "eoe"
+}
+LATEST_STANDARD_SET = "eoe"  # You can update this manually as needed
+
+# === Wildcard estimation logic ===
+def wildcard_value_from_n_packs(n_packs, rare_card_value=1.0, mythic_card_value=1.5):
+    total_rare_wildcards = n_packs / 6
+    total_mythic_wildcards = total_rare_wildcards // 5
+    total_rare_wildcards -= total_mythic_wildcards
+    return (total_rare_wildcards * rare_card_value) + (total_mythic_wildcards * mythic_card_value)
+
+
+# === 4. Get card info and printings from Scryfall ===
 def get_card_data(card_name):
     url = f"https://api.scryfall.com/cards/named?exact={card_name}"
     r = requests.get(url)
@@ -83,26 +97,43 @@ def get_card_data(card_name):
     return r.json()
 
 
-def get_arena_printings(card_data, arena_sets, allowed_rarities):
+def get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority):
     printings_url = card_data["prints_search_uri"]
     r = requests.get(printings_url)
     if r.status_code != 200:
         return []
 
     printings = r.json()["data"]
-    arena_printings = [
-        (p["set"], p["rarity"]) for p in printings
-        if p["set"] in arena_sets and p["rarity"] in allowed_rarities
-    ]
+    arena_printings = []
+
+    for p in printings:
+        set_code = p["set"]
+        rarity = p["rarity"]
+        if (
+            set_code in arena_sets
+            and rarity in allowed_rarities
+            and "arena" in p.get("games", [])
+        ):
+            arena_printings.append((set_code, rarity))
+
+    arena_printings.sort(key=lambda x: set_priority.get(x[0], 999))
     return arena_printings
 
 
-# === 4. Main logic: find best sets ===
+# === 5. Main logic: find best sets ===
 def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
+    preferred_order = [
+        "eoe", "fdn", "dsk", "blb", "otj", "mkm", "lci", "woe", "mom", "one", "bro", "dmu", "snc",
+        "neo", "vow", "mid", "afr", "stx", "khm", "znr",
+        "pio", "sir", "akr", "klr", "mh3", "tdm",
+        "eld", "thb", "m20", "war", "rna", "grn", "m19", "xln", "dom", "ktk", "rix"
+    ]
+
+    set_priority = {code: i for i, code in enumerate(preferred_order)}
     arena_sets = get_arena_sets()
-    set_counter = defaultdict(int)
-    cards_by_set = defaultdict(lambda: defaultdict(int))  # dict[set_code][card_name] = qty_missing
-    rarity_counter_by_set = defaultdict(lambda: defaultdict(int))  # dict[set_code][rarity] = count
+    value_per_set = defaultdict(float)
+    cards_by_set = defaultdict(lambda: defaultdict(int))
+    rarity_counter_by_set = defaultdict(lambda: defaultdict(int))
 
     for _, row in deck_df.iterrows():
         name = row["Name"]
@@ -118,36 +149,47 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
         if not card_data:
             continue
 
-        arena_printings = get_arena_printings(card_data, arena_sets, allowed_rarities)
-
+        arena_printings = get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority)
         if not arena_printings:
-            continue  # no matching arena printings, skip
+            continue
 
-        # Assign the missing quantity to the first matching set printing
         chosen_set, rarity = arena_printings[0]
-        set_counter[chosen_set] += qty_missing
         cards_by_set[chosen_set][name] += qty_missing
         rarity_counter_by_set[chosen_set][rarity] += qty_missing
 
-        time.sleep(0.1)  # be kind to the API
+        effective_value = qty_missing
 
-    sorted_sets = sorted(set_counter.items(), key=lambda x: x[1], reverse=True)
+        if chosen_set in STANDARD_OR_ALCHEMY_LEGAL_SETS:
+            is_latest = chosen_set == LATEST_STANDARD_SET
+            golden_multiplier = 0.6 if not is_latest else 0.9
+
+            owned_qty = owned_dict.get(name, 0)
+            protected_copies = min(qty_missing, 4 - owned_qty)
+            golden_pack_bonus = protected_copies * golden_multiplier
+            bonus_wildcard_value = wildcard_value_from_n_packs(1.1, rare_card_value=1.0, mythic_card_value=1.5)
+
+            effective_value += golden_pack_bonus + bonus_wildcard_value
+
+        value_per_set[chosen_set] += effective_value
+        time.sleep(0.1)
+
+    sorted_sets = sorted(value_per_set.items(), key=lambda x: x[1], reverse=True)
     return sorted_sets, arena_sets, cards_by_set, rarity_counter_by_set
 
 
-# === 5. Run and output result ===
-allowed_rarities = ["rare", "mythic"]  # You can modify this list as needed
+# === 6. Run and output result ===
+allowed_rarities = ["rare", "mythic"]
 
 results, arena_sets, cards_by_set, rarity_counter_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
 
-print("\n📦 Recommended Arena sets to open packs from:")
+print("\\n📦 Recommended Arena sets to open packs from:")
 print("=============================================")
-for set_code, count in results:
+for set_code, score in results:
     rarity_breakdown = ", ".join(
         f"{rarity_counter_by_set[set_code][rarity]} {rarity}"
         for rarity in allowed_rarities
         if rarity_counter_by_set[set_code][rarity] > 0
     )
-    print(f"{arena_sets[set_code]} ({set_code.upper()}): {count} card(s) missing (rarities: {rarity_breakdown})")
+    print(f"{arena_sets[set_code]} ({set_code.upper()}): {score:.1f} card(s) weighted (rarities: {rarity_breakdown})")
     for card_name, qty_missing in sorted(cards_by_set[set_code].items()):
         print(f"   - {card_name} (x{qty_missing})")
