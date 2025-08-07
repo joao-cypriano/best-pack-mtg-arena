@@ -3,13 +3,19 @@ import requests
 from collections import defaultdict
 import time
 
-# === 1. Load decklist and owned cards from Excel ===
 EXCEL_PATH = "mtg_decklist.xlsx"
-search_sideboard = False  # Toggle this to include or exclude the Sideboard
+search_sideboard = False
 
-# === User wildcards available ===
-mythic_wildcards = 3
-rare_wildcards = 9
+mythic_wildcards = 5
+rare_wildcards = 10
+
+STANDARD_OR_ALCHEMY_LEGAL_SETS = [
+    "eoe", "fin", "tdm", "dft", "dsk", "blb", "otj", "mkm",
+    "lci", "woe", "mat", "mom", "one", "bro", "dmu", "fdn"
+]
+LATEST_STANDARD_SET = "eoe"
+
+std_rotation_priority = {code: i for i, code in enumerate(STANDARD_OR_ALCHEMY_LEGAL_SETS)}
 
 deck_df = pd.read_excel(EXCEL_PATH, sheet_name="Decklist")
 owned_df = pd.read_excel(EXCEL_PATH, sheet_name="Have")
@@ -18,14 +24,13 @@ if search_sideboard:
     try:
         sideboard_df = pd.read_excel(EXCEL_PATH, sheet_name="Sideboard")
         deck_df = pd.concat([deck_df, sideboard_df], ignore_index=True)
-    except Exception as e:
-        print("⚠️  Sideboard tab not found or error reading it. Skipping sideboard.")
+    except Exception:
+        print("⚠️ Sideboard tab not found or error reading it. Skipping sideboard.")
 
 deck_df["Name"] = deck_df["Name"].str.strip()
 owned_df["Name"] = owned_df["Name"].str.strip()
 owned_dict = dict(zip(owned_df["Name"], owned_df["Qty"]))
 
-# === 2. Get Scryfall Arena sets ===
 def get_arena_sets():
     print("Using manual list of MTG Arena packs available...")
     return {
@@ -75,21 +80,12 @@ def get_arena_sets():
         "klr": "Kaladesh Remastered"
     }
 
-# === 3. Define Standard/Alchemy legal sets for Golden Pack bonus ===
-STANDARD_OR_ALCHEMY_LEGAL_SETS = [
-    "eoe", "fin", "tdm", "dft", "dsk", "blb", "otj", "mkm",
-    "lci", "woe", "mat", "mom", "one", "bro", "dmu", "fdn"
-]  # Ordered from NEWEST to OLDEST
-LATEST_STANDARD_SET = "eoe"
-
-# === Wildcard estimation logic ===
 def wildcard_value_from_n_packs(n_packs, rare_card_value=1.0, mythic_card_value=1.5):
     total_rare_wildcards = n_packs / 6
     total_mythic_wildcards = total_rare_wildcards // 5
     total_rare_wildcards -= total_mythic_wildcards
     return (total_rare_wildcards * rare_card_value) + (total_mythic_wildcards * mythic_card_value)
 
-# === 4. Get card info and printings from Scryfall ===
 def get_card_data(card_name):
     url = f"https://api.scryfall.com/cards/named?exact={card_name}"
     r = requests.get(url)
@@ -99,35 +95,25 @@ def get_card_data(card_name):
     return r.json()
 
 def get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority):
-    printings_url = card_data["prints_search_uri"]
-    r = requests.get(printings_url)
+    r = requests.get(card_data["prints_search_uri"])
     if r.status_code != 200:
         return []
 
     printings = r.json()["data"]
     rarity_rank = {"mythic": 2, "rare": 1}
 
-    filtered_printings = [
+    filtered = [
         p for p in printings
-        if p["set"] in arena_sets
-        and p["rarity"] in allowed_rarities
-        and "arena" in p.get("games", [])
+        if p["set"] in arena_sets and p["rarity"] in allowed_rarities and "arena" in p.get("games", [])
     ]
 
-    if not filtered_printings:
+    if not filtered:
         return []
 
-    filtered_printings.sort(
-        key=lambda x: (
-            -rarity_rank.get(x["rarity"], 0),
-            set_priority.get(x["set"], 999)
-        )
-    )
-
-    best = filtered_printings[0]
+    filtered.sort(key=lambda x: (-rarity_rank.get(x["rarity"], 0), set_priority.get(x["set"], 999)))
+    best = filtered[0]
     return [(best["set"], best["rarity"])]
 
-# === 5. Main logic: find best sets ===
 def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
     preferred_order = [
         "eoe", "fdn", "dsk", "blb", "otj", "mkm", "lci", "woe", "mom", "one",
@@ -136,7 +122,6 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
         "rna", "grn", "m19", "xln", "dom", "ktk", "rix"
     ]
     set_priority = {code: i for i, code in enumerate(preferred_order)}
-    std_rotation_priority = {code: i for i, code in enumerate(STANDARD_OR_ALCHEMY_LEGAL_SETS)}
 
     arena_sets = get_arena_sets()
     value_per_set = defaultdict(float)
@@ -169,79 +154,64 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
 
         if chosen_set in STANDARD_OR_ALCHEMY_LEGAL_SETS:
             is_latest = chosen_set == LATEST_STANDARD_SET
-            golden_multiplier = 0.6 if not is_latest else 0.9
+            golden_multiplier = 0.9 if is_latest else 0.6
 
             owned_qty = owned_dict.get(name, 0)
             protected_copies = min(qty_missing, 4 - owned_qty)
             golden_pack_bonus = protected_copies * golden_multiplier
-            bonus_wildcard_value = wildcard_value_from_n_packs(1.1, rare_card_value=1.0, mythic_card_value=1.5)
+            bonus_wildcard_value = wildcard_value_from_n_packs(1.1)
 
             effective_value += golden_pack_bonus + bonus_wildcard_value
 
         value_per_set[chosen_set] += effective_value
         time.sleep(0.1)
 
-    # Tiebreaker using oldest STANDARD set
-    def tiebreaker_key(item):
-        set_code, value = item
-        std_age = std_rotation_priority.get(set_code, float("inf"))  # lower = newer
-        return (-value, std_age)  # primary: value desc, secondary: std age asc (oldest first)
+    rounded_value_per_set = {k: round(v, 3) for k, v in value_per_set.items()}
 
-    sorted_sets = sorted(value_per_set.items(), key=tiebreaker_key)
-    return sorted_sets, arena_sets, cards_by_set, rarity_counter_by_set
+    # Debugging for checking if ties are being detected correctly
+    # sorted_vals = sorted(rounded_value_per_set.items(), key=lambda x: -x[1])
+    # for i in range(len(sorted_vals) - 1):
+    #     if abs(sorted_vals[i][1] - sorted_vals[i + 1][1]) <= 1e-3:
+    #         print(f"⚖️ Tie detected: {sorted_vals[i][0]} and {sorted_vals[i + 1][0]} with ~{sorted_vals[i][1]:.3f}")
 
-# === 6. Greedy Wildcard Application for Impact Maximization (with usage log) ===
+    return rounded_value_per_set, arena_sets, cards_by_set, rarity_counter_by_set
+
+
 def apply_wildcards_greedily(cards_by_set, rarity_counter_by_set, mythic_wildcards, rare_wildcards):
-    usage_log = []  # Log detalhado do uso dos wildcards
+    usage_log = []
 
-    # Step 1: crafting whole small sets (<=2 cards)
     while True:
-        sets_to_consider = []
-        for set_code in list(cards_by_set.keys()):
-            total_missing = sum(cards_by_set[set_code].values())
-            if total_missing <= 2:
-                sets_to_consider.append(set_code)
-
-        if not sets_to_consider:
+        small_sets = [s for s in list(cards_by_set.keys()) if sum(cards_by_set[s].values()) <= 2]
+        if not small_sets:
             break
 
         crafted_any = False
-
-        for set_code in sets_to_consider:
+        for set_code in small_sets:
             rares = rarity_counter_by_set[set_code].get("rare", 0)
             mythics = rarity_counter_by_set[set_code].get("mythic", 0)
 
-            # Craft mythics first
             mythics_to_craft = min(mythics, mythic_wildcards)
-            if mythics_to_craft > 0:
-                for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
-                    if card_rarity != "mythic":
-                        continue
+            for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
+                if card_rarity == "mythic" and mythics_to_craft > 0:
                     qty = cards_by_set[set_code][(card_name, card_rarity)]
-                    if qty > 0 and mythics_to_craft > 0:
-                        used = min(qty, mythics_to_craft)
-                        cards_by_set[set_code][(card_name, card_rarity)] -= used
-                        rarity_counter_by_set[set_code]["mythic"] -= used
-                        mythic_wildcards -= used
-                        mythics_to_craft -= used
-                        usage_log.append(f"Crafted {used}x Mythic '{card_name}' from {set_code.upper()}")
+                    used = min(qty, mythics_to_craft)
+                    cards_by_set[set_code][(card_name, card_rarity)] -= used
+                    rarity_counter_by_set[set_code]["mythic"] -= used
+                    mythic_wildcards -= used
+                    mythics_to_craft -= used
+                    usage_log.append(f"Crafted {used}x Mythic '{card_name}' from {set_code.upper()}")
 
-            # Then craft rares
             rares_to_craft = min(rares, rare_wildcards)
-            if rares_to_craft > 0:
-                for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
-                    if card_rarity != "rare":
-                        continue
+            for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
+                if card_rarity == "rare" and rares_to_craft > 0:
                     qty = cards_by_set[set_code][(card_name, card_rarity)]
-                    if qty > 0 and rares_to_craft > 0:
-                        used = min(qty, rares_to_craft)
-                        cards_by_set[set_code][(card_name, card_rarity)] -= used
-                        rarity_counter_by_set[set_code]["rare"] -= used
-                        rare_wildcards -= used
-                        rares_to_craft -= used
-                        usage_log.append(f"Crafted {used}x Rare '{card_name}' from {set_code.upper()}")
+                    used = min(qty, rares_to_craft)
+                    cards_by_set[set_code][(card_name, card_rarity)] -= used
+                    rarity_counter_by_set[set_code]["rare"] -= used
+                    rare_wildcards -= used
+                    rares_to_craft -= used
+                    usage_log.append(f"Crafted {used}x Rare '{card_name}' from {set_code.upper()}")
 
-            # Clean up zeros, keeping partially crafted card sets
             cards_by_set[set_code] = {k: v for k, v in cards_by_set[set_code].items() if v > 0}
             rarity_counter_by_set[set_code] = {k: v for k, v in rarity_counter_by_set[set_code].items() if v > 0}
 
@@ -250,11 +220,9 @@ def apply_wildcards_greedily(cards_by_set, rarity_counter_by_set, mythic_wildcar
                 rarity_counter_by_set.pop(set_code, None)
 
             crafted_any = True
-
         if not crafted_any:
             break
 
-    # Passo 2: craft partial leftover, prioritizing older sets
     def set_age_priority(set_code):
         return 1 if set_code in STANDARD_OR_ALCHEMY_LEGAL_SETS else 0
 
@@ -271,35 +239,28 @@ def apply_wildcards_greedily(cards_by_set, rarity_counter_by_set, mythic_wildcar
         mythics = rarity_counter_by_set[set_code].get("mythic", 0)
         rares = rarity_counter_by_set[set_code].get("rare", 0)
 
-        if mythics > 0 and mythic_wildcards > 0:
-            mythics_to_craft = min(mythics, mythic_wildcards)
-            for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
-                if card_rarity != "mythic":
-                    continue
+        mythics_to_craft = min(mythics, mythic_wildcards)
+        for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
+            if card_rarity == "mythic" and mythics_to_craft > 0:
                 qty = cards_by_set[set_code][(card_name, card_rarity)]
-                if qty > 0 and mythics_to_craft > 0:
-                    used = min(qty, mythics_to_craft)
-                    cards_by_set[set_code][(card_name, card_rarity)] -= used
-                    rarity_counter_by_set[set_code]["mythic"] -= used
-                    mythic_wildcards -= used
-                    mythics_to_craft -= used
-                    usage_log.append(f"Crafted {used}x Mythic '{card_name}' from {set_code.upper()}")
+                used = min(qty, mythics_to_craft)
+                cards_by_set[set_code][(card_name, card_rarity)] -= used
+                rarity_counter_by_set[set_code]["mythic"] -= used
+                mythic_wildcards -= used
+                mythics_to_craft -= used
+                usage_log.append(f"Crafted {used}x Mythic '{card_name}' from {set_code.upper()}")
 
-        if rares > 0 and rare_wildcards > 0:
-            rares_to_craft = min(rares, rare_wildcards)
-            for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
-                if card_rarity != "rare":
-                    continue
+        rares_to_craft = min(rares, rare_wildcards)
+        for (card_name, card_rarity) in list(cards_by_set[set_code].keys()):
+            if card_rarity == "rare" and rares_to_craft > 0:
                 qty = cards_by_set[set_code][(card_name, card_rarity)]
-                if qty > 0 and rares_to_craft > 0:
-                    used = min(qty, rares_to_craft)
-                    cards_by_set[set_code][(card_name, card_rarity)] -= used
-                    rarity_counter_by_set[set_code]["rare"] -= used
-                    rare_wildcards -= used
-                    rares_to_craft -= used
-                    usage_log.append(f"Crafted {used}x Rare '{card_name}' from {set_code.upper()}")
+                used = min(qty, rares_to_craft)
+                cards_by_set[set_code][(card_name, card_rarity)] -= used
+                rarity_counter_by_set[set_code]["rare"] -= used
+                rare_wildcards -= used
+                rares_to_craft -= used
+                usage_log.append(f"Crafted {used}x Rare '{card_name}' from {set_code.upper()}")
 
-        # Clean up zeros after partial crafting
         cards_by_set[set_code] = {k: v for k, v in cards_by_set[set_code].items() if v > 0}
         rarity_counter_by_set[set_code] = {k: v for k, v in rarity_counter_by_set[set_code].items() if v > 0}
 
@@ -309,8 +270,6 @@ def apply_wildcards_greedily(cards_by_set, rarity_counter_by_set, mythic_wildcar
 
     return cards_by_set, rarity_counter_by_set, usage_log
 
-
-# === 6.1 Recalculate set scores considering golden pack bonuses ===
 def recalc_set_scores_with_bonus(cards_by_set, rarity_counter_by_set, allowed_rarities):
     scores = {}
     for set_code in cards_by_set:
@@ -322,11 +281,11 @@ def recalc_set_scores_with_bonus(cards_by_set, rarity_counter_by_set, allowed_ra
 
         if set_code in STANDARD_OR_ALCHEMY_LEGAL_SETS:
             is_latest = set_code == LATEST_STANDARD_SET
-            golden_multiplier = 0.6 if not is_latest else 0.9
+            golden_multiplier = 0.9 if is_latest else 0.6
 
             protected_copies = min(total_missing, 4)
             golden_pack_bonus = protected_copies * golden_multiplier
-            bonus_wildcard_value = wildcard_value_from_n_packs(1.1, rare_card_value=1.0, mythic_card_value=1.5)
+            bonus_wildcard_value = wildcard_value_from_n_packs(1.1)
 
             total_score = base_score + golden_pack_bonus + bonus_wildcard_value
         else:
@@ -336,8 +295,6 @@ def recalc_set_scores_with_bonus(cards_by_set, rarity_counter_by_set, allowed_ra
 
     return scores
 
-
-# === 7. Run and output result ===
 allowed_rarities = ["rare", "mythic"]
 
 results, arena_sets, cards_by_set, rarity_counter_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
@@ -347,7 +304,13 @@ cards_by_set, rarity_counter_by_set, usage_log = apply_wildcards_greedily(
 )
 
 scores_after = recalc_set_scores_with_bonus(cards_by_set, rarity_counter_by_set, allowed_rarities)
-sorted_after = sorted(scores_after.items(), key=lambda x: x[1], reverse=True)
+
+def tiebreaker_final(item):
+    set_code, value = item
+    std_age = std_rotation_priority.get(set_code, float("inf"))
+    return (-round(value, 3), -std_age)
+
+sorted_after = sorted(scores_after.items(), key=tiebreaker_final)
 
 print("\n📦 Recommended Arena sets to open packs from (after applying wildcards):")
 print("===============================================================")
