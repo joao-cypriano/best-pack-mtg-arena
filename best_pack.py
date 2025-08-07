@@ -25,7 +25,6 @@ deck_df["Name"] = deck_df["Name"].str.strip()
 owned_df["Name"] = owned_df["Name"].str.strip()
 owned_dict = dict(zip(owned_df["Name"], owned_df["Qty"]))
 
-
 # === 2. Get Scryfall Arena sets ===
 def get_arena_sets():
     print("Using manual list of MTG Arena packs available...")
@@ -76,13 +75,12 @@ def get_arena_sets():
         "klr": "Kaladesh Remastered"
     }
 
-
 # === 3. Define Standard/Alchemy legal sets for Golden Pack bonus ===
-STANDARD_OR_ALCHEMY_LEGAL_SETS = {
-    "fdn", "dmu", "bro", "one", "mom", "mat", "woe", "lci", "mkm", "otj",
-    "blb", "dsk", "dft", "tdm", "fin", "eoe"
-}
-LATEST_STANDARD_SET = "eoe"  # Update manually as needed
+STANDARD_OR_ALCHEMY_LEGAL_SETS = [
+    "eoe", "fin", "tdm", "dft", "dsk", "blb", "otj", "mkm",
+    "lci", "woe", "mat", "mom", "one", "bro", "dmu", "fdn"
+]  # Ordered from NEWEST to OLDEST
+LATEST_STANDARD_SET = "eoe"
 
 # === Wildcard estimation logic ===
 def wildcard_value_from_n_packs(n_packs, rare_card_value=1.0, mythic_card_value=1.5):
@@ -90,7 +88,6 @@ def wildcard_value_from_n_packs(n_packs, rare_card_value=1.0, mythic_card_value=
     total_mythic_wildcards = total_rare_wildcards // 5
     total_rare_wildcards -= total_mythic_wildcards
     return (total_rare_wildcards * rare_card_value) + (total_mythic_wildcards * mythic_card_value)
-
 
 # === 4. Get card info and printings from Scryfall ===
 def get_card_data(card_name):
@@ -101,7 +98,6 @@ def get_card_data(card_name):
         return None
     return r.json()
 
-
 def get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority):
     printings_url = card_data["prints_search_uri"]
     r = requests.get(printings_url)
@@ -109,7 +105,6 @@ def get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority):
         return []
 
     printings = r.json()["data"]
-
     rarity_rank = {"mythic": 2, "rare": 1}
 
     filtered_printings = [
@@ -122,11 +117,10 @@ def get_arena_printings(card_data, arena_sets, allowed_rarities, set_priority):
     if not filtered_printings:
         return []
 
-    # Finds the printing with the right rarity
     filtered_printings.sort(
         key=lambda x: (
-            -rarity_rank.get(x["rarity"], 0),  # higher rarity first
-            set_priority.get(x["set"], 999)    # then set priority
+            -rarity_rank.get(x["rarity"], 0),
+            set_priority.get(x["set"], 999)
         )
     )
 
@@ -141,8 +135,9 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
         "pio", "sir", "akr", "klr", "mh3", "tdm", "eld", "thb", "m20", "war",
         "rna", "grn", "m19", "xln", "dom", "ktk", "rix"
     ]
-
     set_priority = {code: i for i, code in enumerate(preferred_order)}
+    std_rotation_priority = {code: i for i, code in enumerate(STANDARD_OR_ALCHEMY_LEGAL_SETS)}
+
     arena_sets = get_arena_sets()
     value_per_set = defaultdict(float)
     cards_by_set = defaultdict(lambda: defaultdict(int))
@@ -186,9 +181,15 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
         value_per_set[chosen_set] += effective_value
         time.sleep(0.1)
 
-    sorted_sets = sorted(value_per_set.items(), key=lambda x: x[1], reverse=True)
-    return sorted_sets, arena_sets, cards_by_set, rarity_counter_by_set
+    # Tiebreaker using oldest STANDARD set
+    def tiebreaker_key(item):
+        set_code, value = item
+        is_standard = set_code in STANDARD_OR_ALCHEMY_LEGAL_SETS
+        std_age = std_rotation_priority.get(set_code, float("inf"))  # lower = newer
+        return (-value, std_age)  # primary: value desc, secondary: std age asc (oldest first)
 
+    sorted_sets = sorted(value_per_set.items(), key=tiebreaker_key)
+    return sorted_sets, arena_sets, cards_by_set, rarity_counter_by_set
 
 # === 6. Greedy Wildcard Application for Impact Maximization (with usage log) ===
 def apply_wildcards_greedily(cards_by_set, rarity_counter_by_set, mythic_wildcards, rare_wildcards):
@@ -342,7 +343,6 @@ allowed_rarities = ["rare", "mythic"]
 
 results, arena_sets, cards_by_set, rarity_counter_by_set = best_sets_to_open(deck_df, owned_dict, allowed_rarities)
 
-# Apply wildcards with log
 cards_by_set, rarity_counter_by_set, usage_log = apply_wildcards_greedily(
     cards_by_set, rarity_counter_by_set, mythic_wildcards, rare_wildcards
 )
@@ -362,7 +362,6 @@ for set_code, score in sorted_after:
     for (card_name, card_rarity), qty_missing in sorted(cards_by_set[set_code].items()):
         print(f"   - {card_name} ({card_rarity}) (x{qty_missing})")
 
-# Print detailed log of wildcard usage on simulation
 print("\n🎯 Wildcard crafting usage (only use them when you have enough wildcards to complete the deck, this step is just to aid in calculations):")
 for log_line in usage_log:
     print(" -", log_line)
