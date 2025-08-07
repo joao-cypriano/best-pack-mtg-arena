@@ -184,7 +184,6 @@ def best_sets_to_open(deck_df, owned_dict, allowed_rarities):
     # Tiebreaker using oldest STANDARD set
     def tiebreaker_key(item):
         set_code, value = item
-        is_standard = set_code in STANDARD_OR_ALCHEMY_LEGAL_SETS
         std_age = std_rotation_priority.get(set_code, float("inf"))  # lower = newer
         return (-value, std_age)  # primary: value desc, secondary: std age asc (oldest first)
 
