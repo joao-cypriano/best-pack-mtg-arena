@@ -11,6 +11,7 @@ Given a decklist and a list of cards you already own, the script:
 - Queries the Scryfall API to get card details and their printings.
 - Filters to only include cards from MTG Arena legal sets.
 - Calculates how many rare or mythic cards you are missing from each set.
+- Calculates the value of opening standard-legal packs, factoring in golden pack contribution (including wildcards from golden packs) and giving extra weight to the most recent set for having guaranteed cards.
 - Suggests which MTG Arena sets you should open packs from to maximize missing cards gained.
 - Shows the missing cards per set along with the quantities needed.
 
@@ -34,7 +35,7 @@ Given a decklist and a list of cards you already own, the script:
    For each rare/mythic card in your deck, it calculates how many you are missing and attributes those missing copies to one printing set.
 
 5. **Output**:  
-   Displays recommended sets to open packs from, along with a breakdown of missing cards and their quantities.
+   Calculates a weighted score for each set based on missing rares/mythics, golden pack contributions (including wildcards), and standard legality, showing recommended sets sorted by total value.
 
 ---
 
@@ -97,4 +98,6 @@ Outlaws of Thunder Junction (OTJ): 4 rare/mythic card(s) missing
 - Only rare and mythic cards are considered for pack recommendations.
 - Missing card quantities are assigned to the first relevant printing set.
 - The manual list of Arena sets can be updated as new sets are released.
+- Golden pack contributions include both card drops and wildcards (1 rare every 6 packs, 1 uncommon every 6 packs; every 5th rare wildcard is mythic).
+- Standard-legal sets get a bonus weight due to their contribution toward golden packs; the most recent set receives an even higher weight due to guaranteed golden pack drops.
 
