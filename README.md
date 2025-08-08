@@ -83,14 +83,14 @@ python best_packs.py
 ```
 
 ## Example Output
-📦 Recommended Arena sets to open packs from:
-=============================================
-Guilds of Ravnica (GRN): 7 rare/mythic card(s) missing
-   - Arclight Phoenix (x3)
-   - Steam Vents (x4)
-
-Outlaws of Thunder Junction (OTJ): 4 rare/mythic card(s) missing
-   - Spirebluff Canal (x4)
+📦 Recommended Arena sets to open packs from (after applying wildcards):
+===============================================================
+Outlaws of Thunder Junction (OTJ): 6.6 card(s) weighted (rarities: 4 rare)
+   - Spirebluff Canal (rare) (x4)
+Bloomburrow (BLB): 6.6 card(s) weighted (rarities: 4 rare)
+   - Artist's Talent (rare) (x4)
+Tarkir Dragonstorm (TDM): 5.0 card(s) weighted (rarities: 3 rare)
+   - Cori-Steel Cutter (rare) (x3)
 ...
 
 ## Notes
