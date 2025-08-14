@@ -100,14 +100,14 @@ python best_packs.py
 Using manual list of MTG Arena packs available...
 🔍 Processing: Arclight Phoenix
 🔍 Processing: Artist's Talent
-...
+
 📦 Recommended sets to open (after crafting plan)
 ================================================
 Dominaria United (DMU): direct≈1.46% + GP:0.49% + WC:18.33% → total≈20.28%  |  1/60 rares, 0/20 mythics
    - Rare: Shivan Reef (remaining needed: 1)
 Outlaws of Thunder Junction (OTJ): direct≈1.46% + GP:0.49% + WC:18.33% → total≈20.28%  |  1/60 rares, 0/20 mythics
    - Rare: Spirebluff Canal (remaining needed: 1)
-...
+
 🎯 Suggested wildcard usage order (aiming not to eliminate targets in top sets):
   - Crafted 4x Mythic 'Arclight Phoenix' (remaining needed: 0)
   - Crafted 2x Rare 'Cori-Steel Cutter' (remaining needed: 1)
