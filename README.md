@@ -97,8 +97,10 @@ python best_packs.py
 
 ## Example Output
 
-Using manual list of MTG Arena packs available
+Using manual list of MTG Arena packs available:
+
 🔍 Processing: Arclight Phoenix
+
 🔍 Processing: Artist's Talent
 
 📦 Recommended sets to open (after crafting plan)
